@@ -3,7 +3,7 @@
 print("""
 Loading {{cookiecutter.title}} from {{cookiecutter.archive}}.apk
     Pygbag Version : {{cookiecutter.version}}
-    Template Version : 0.8.6
+    Template Version : 0.9.0
     Python  : {{cookiecutter.PYBUILD}}
     CDN URL : {{cookiecutter.cdn}}
     Screen  : {{cookiecutter.width}}x{{cookiecutter.height}}
@@ -120,7 +120,7 @@ async def custom_site():
             await asyncio.sleep(.1)
 
     # start async top level machinery if not started and add a console in any case if requested.
-    await aio.toplevel.handler.start_toplevel(platform.shell, console=window.python.config.debug)
+    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)
 
     # now that apk is mounted we have access to font cache
     # but we need to fill __file__/__name__ that are not yet set
@@ -347,7 +347,8 @@ height="1px"
             <iframe id="iframe" class="framed" name="iframe"
 width="470px" height="90%"
 allowtransparency="true"
-style="z-index: 10; style="background: #FFFFFF;"
+style="z-index: 10;"
+style="background: #FFFFFF;"
 frameborder="1"
                 allowfullscreen="true"
                 webkitallowfullscreen="true"

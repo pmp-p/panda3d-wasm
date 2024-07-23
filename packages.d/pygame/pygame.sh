@@ -19,34 +19,47 @@ echo "
 
 
 
-if [ -f /pp ]
+CYTHON=${CYTHON:-Cython-3.0.10-py2.py3-none-any.whl}
+if echo $GITHUB_WORKSPACE|grep wip
 then
     DEV=true
 else
-    if echo $GITHUB_WORKSPACE|grep wip
-    then
-        DEV=true
-    else
-        DEV=${DEV:-false}
-    fi
+    DEV=${DEV:-false}
 
     # update cython
     TEST_CYTHON=$($HPY -m cython -V 2>&1)
-    if echo $TEST_CYTHON| grep -q 3.0.1$
+    if echo $TEST_CYTHON| grep -q 3.1.0a0$
     then
         echo "  * not upgrading cython $TEST_CYTHON
 " 1>&2
     else
-        echo "  * upgrading cython $TEST_CYTHON to 3.0.1
+        echo "  * upgrading cython $TEST_CYTHON to 3.0.10
 "  1>&2
-        #$SYS_PYTHON -m pip install --user --upgrade git+https://github.com/cython/cython.git
-        CYTHON=${CYTHON:-Cython-3.0.1-py2.py3-none-any.whl}
-        pushd build
-        wget -q -c https://github.com/cython/cython/releases/download/3.0.1/${CYTHON}
-        $HPY -m pip install $CYTHON
-        popd
+
+        if echo $PYBUILD|grep -q 3.13$
+        then
+           echo "
+
+ ================= forcing Cython git instead of release ${CYTHON}  =================
+
+"
+            $HPY -m pip install --upgrade --force git+https://github.com/cython/cython.git
+            /opt/python-wasm-sdk/python3-wasm -m pip install --upgrade --force --no-build-isolation --force git+https://github.com/cython/cython.git
+        else
+            echo "
+
+ ================= Using Cython release ${CYTHON}  =================
+
+"
+            pushd build
+            wget -q -c https://github.com/cython/cython/releases/download/3.0.10/${CYTHON}
+            $HPY -m pip install $CYTHON
+            popd
+        fi
+
     fi
 fi
+
 
 mkdir -p external
 pushd $(pwd)/external
@@ -70,40 +83,28 @@ then
         pushd $(pwd)/pygame-wasm
     fi
 
+    # to upstream after tests
+    # done wget -O- https://patch-diff.githubusercontent.com/raw/pmp-p/pygame-ce-wasm/pull/7.diff | patch -p1
+
     #unsure
     wget -O- https://patch-diff.githubusercontent.com/raw/pmp-p/pygame-ce-wasm/pull/3.diff | patch -p1
 
-    patch -p1 << END
-diff --git a/src_c/static.c b/src_c/static.c
-index 03cc7c61..a00a51a7 100644
---- a/src_c/static.c
-+++ b/src_c/static.c
-@@ -255,9 +255,17 @@ static struct PyModuleDef mod_pygame_static = {PyModuleDef_HEAD_INIT,
-                                                "pygame_static", NULL, -1,
-                                                mod_pygame_static_methods};
+    # new cython (git)
+    wget -O- https://patch-diff.githubusercontent.com/raw/pmp-p/pygame-ce-wasm/pull/8.diff | patch -p1
 
-+#include <SDL2/SDL_ttf.h>
-+
- PyMODINIT_FUNC
- PyInit_pygame_static()
- {
-+    {
-+        if (TTF_Init())
-+            fprintf(stderr, "ERROR: TTF_Init error");
-+        SDL_SetHint("SDL_EMSCRIPTEN_KEYBOARD_ELEMENT", "1");
-+    }
-+
-     load_submodule("pygame", PyInit_base(), "base");
-     load_submodule("pygame", PyInit_constants(), "constants");
-     load_submodule("pygame", PyInit_surflock(), "surflock");
-END
+
+    # added Vector2.from_polar and Vector3.from_spherical classmethods
+    # breaks, left a review !
+    # wget -O- https://patch-diff.githubusercontent.com/raw/pygame-community/pygame-ce/pull/2141.diff | patch -p1
+
 
     # cython3 / merged
     # wget -O- https://patch-diff.githubusercontent.com/raw/pygame-community/pygame-ce/pull/2395.diff | patch -p1
 
 
     # zerodiv mixer.music / merged
-    # wget -O - https://patch-diff.githubusercontent.com/raw/pygame-community/pygame-ce/pull/2426.diff | patch -p1
+    # wget -O- https://patch-diff.githubusercontent.com/raw/pygame-community/pygame-ce/pull/2426.diff | patch -p1
+
 
     # weird exception not raised correctly in test/pixelcopy_test
     patch -p1 <<END
@@ -121,6 +122,19 @@ index e33eae33..f5f6697e 100644
 
 END
 
+    if echo $PYBUILD|grep -q 3.13$
+    then
+        echo "
+
+
+============================================
+    Forcing cython regen for 3.13+
+============================================
+
+
+"
+        rm src_c/_sdl2/sdl2.c src_c/_sdl2/audio.c src_c/_sdl2/mixer.c src_c/_sdl2/controller_old.c src_c/_sdl2/video.c src_c/pypm.c
+    fi
 
 else
     pushd $(pwd)/pygame-wasm
@@ -247,7 +261,7 @@ then
     emcc -shared -Os -g0 -fpic -o ${TARGET_FILE} $SDKROOT/prebuilt/emsdk/libpygame${PYMAJOR}.${PYMINOR}.a $SDL2
 
     # github CI does not build wheel for now.
-    if [ -d /data/git/archives/repo/pkg ]
+    if [ -d /data/git/archives/repo/cp${TAG} ]
     then
         mkdir -p $TARGET_FOLDER
         /bin/cp -rf testing/pygame_static-1.0-cp${TAG}-cp${TAG}-wasm32_mvp_emscripten/. ${TARGET_FOLDER}/
@@ -259,7 +273,7 @@ then
             then
                 /data/git/archives/repo/norm.sh
             else
-                whl=/data/git/archives/repo/pkg/$(basename $(pwd)).whl
+                whl=/data/git/archives/repo/cp${TAG}/$(basename $(pwd)).whl
                 [ -f $whl ] && rm $whl
                 zip $whl -r .
             fi
