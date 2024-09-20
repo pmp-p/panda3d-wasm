@@ -18,7 +18,7 @@ then
     fi
 fi
 
-ln -s $(pwd)/src/pygbag $(pwd)/pygbag
+ln -sf $(pwd)/src/pygbag $(pwd)/pygbag
 
 pushd src/pygbag/support
 cp -r _xterm_parser ${SDKROOT}/prebuilt/emsdk/common/site-packages/
@@ -231,9 +231,9 @@ echo CPY_CFLAGS=$CPY_CFLAGS
 
 
 
-if [ -f /data/git/pygbag/integration/${INTEGRATION}.h ]
+if [ -f ${WORKSPACE}/integration/${INTEGRATION}.h ]
 then
-    LNK_TEST=/data/git/pygbag/integration/${INTEGRATION}
+    LNK_TEST=${WORKSPACE}/integration/${INTEGRATION}
 else
     LNK_TEST=/tmp/pygbag_integration_test
 fi
@@ -242,15 +242,22 @@ INC_TEST="${LNK_TEST}.h"
 MAIN_TEST="${LNK_TEST}.c"
 
 
-touch ${INT_TEST} ${INC_TEST} ${MAIN_TEST}
+touch ${INT_TEST} ${INC_TEST} ${LNK_TEST} ${MAIN_TEST}
+
+# -L${SDKROOT}/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/pic only !
 
 if emcc -fPIC -std=gnu99 -D__PYDK__=1 -DNDEBUG $MIMALLOC $CPY_CFLAGS $CF_SDL $CPOPTS \
  -DINC_TEST=$INC_TEST -DMAIN_TEST=$MAIN_TEST \
  -c -fwrapv -Wall -Werror=implicit-function-declaration -fvisibility=hidden \
- -I${PYDIR}/internal -I${PYDIR} -I./support -I./external/hpy/hpy/devel/include -DPy_BUILD_CORE\
+ -I${PYDIR}/internal -I${PYDIR} -I./support -I./external/hpy/hpy/devel/include -DPy_BUILD_CORE \
  -o build/${MODE}.o support/__EMSCRIPTEN__-pymain.c
 then
-    STDLIBFS="--preload-file build/stdlib-rootfs/python${PYBUILD}@/usr/lib/python${PYBUILD}"
+    if echo $PYBUILD | grep -q 13$
+    then
+        STDLIBFS="--preload-file build/stdlib-rootfs/python${PYBUILD}t@/usr/lib/python${PYBUILD}t"
+    else
+        STDLIBFS="--preload-file build/stdlib-rootfs/python${PYBUILD}@/usr/lib/python${PYBUILD}"
+    fi
 
     # \
     # --preload-file /usr/share/terminfo/x/xterm@/usr/share/terminfo/x/xterm \
@@ -287,6 +294,8 @@ then
         if [ -f $cpylib ]
         then
             LDFLAGS="$LDFLAGS $cpylib"
+        else
+            echo "  Not found : $cpylib"
         fi
     done
 
@@ -309,8 +318,6 @@ then
 
 #  -std=gnu99 -std=c++23
 # EXTRA_EXPORTED_RUNTIME_METHODS => EXPORTED_RUNTIME_METHODS after 3.1.52
-
-
 
 
 PG=/pgdata
@@ -378,13 +385,6 @@ END
             done
             popd
         fi
-#echo "
-#    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-#    emsdk tot js gen temp fix
-#    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-#"
-#        sed -i 's/_glfwSetWindowContentScaleCallback_sig=iii/_glfwSetWindowContentScaleCallback_sig="iii"/g' \
-#         ${DIST_DIR}/python${PYMAJOR}${PYMINOR}/${MODE}.js
         du -hs ${DIST_DIR}/*
     else
         echo "pymain+loader linking failed"
