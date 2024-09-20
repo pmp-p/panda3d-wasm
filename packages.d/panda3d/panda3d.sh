@@ -5,7 +5,21 @@ export CONFIG=${CONFIG:-$SDKROOT/config}
 
 #   --override STDFLOAT_DOUBLE=1
 
+
 . ${CONFIG}
+
+export CC=emcc
+export CXX=em++
+
+# fix some free threading detection problems.
+if echo $PYBUILD|grep 3.13
+then
+    [ -L $PREFIX/include/python3.13t ]  || ln -s $PREFIX/include/python3.13 $PREFIX/include/python3.13t
+    [ -L $PREFIX/lib/libpython3.13t.a ] || ln -s $PREFIX/lib/libpython3.13.a $PREFIX/lib/libpython3.13t.a
+    export PYLINK="/opt/python-wasm-sdk/prebuilt/emsdk/libHacl_Hash_SHA23.13.a /opt/python-wasm-sdk/prebuilt/emsdk/libexpat3.13.a /opt/python-wasm-sdk/prebuilt/emsdk/libmpdec3.13.a -lffi"
+fi
+
+
 
 echo "
 
@@ -40,8 +54,18 @@ fi
 
 [ -f panda3d.static.c ] && rm panda3d.static.c
 
-wget -Omakepanda/makepandacore.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepandacore.py
-wget -Omakepanda/makepanda.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepanda.py
+if [ -f /data/git/pygbag/wip/makepanda.py ]
+then
+    cp -vf /data/git/pygbag/wip/makepanda*.py makepanda/
+    patch -p1 < /data/git/pygbag/wip/panda.diff
+    patch -p1 < /data/git/pygbag/wip/panda1.diff
+else
+    wget -Omakepanda/makepandacore.pgw.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepandacore.py
+    wget -Omakepanda/makepanda.pgw.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepanda.py
+    wget -Omakepanda/makepandacore.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepandacore.py
+    wget -Omakepanda/makepanda.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepanda.py
+fi
+
 wget -Opanda3d.static.c https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/panda3d.static.c
 
 # merged
@@ -170,19 +194,22 @@ fi
 
 . ${SDKROOT}/emsdk/emsdk_env.sh
 export EMSDK_PYTHON=$SYS_PYTHON
+export CC=emcc
+export CXX=em++
+
 
 if false
 then
     emcmake cmake $P3D_SRC_DIR \
      -DCMAKE_INSTALL_PREFIX=$PREFIX \
-        -DPYMAJOR=$PYMAJOR -DPYMINOR=$PYMINOR -DPython_DIR=${ROOT}/support \
-        -DHAVE_PYTHON=YES \
         -DHAVE_EGG=YES -DHAVE_SSE2=NO -DHAVE_THREADS=NO \
         -DHAVE_OPENAL=Yes -DHAVE_OPENSSL=NO \
-         -DHAVE_EGL=NO -DHAVE_GL=YES -DHAVE_GLX=YES -DHAVE_X11=YES -DHAVE_GLES1=NO -DHAVE_GLES2=YES \
+-DHAVE_EGL=NO -DHAVE_GL=NO -DHAVE_GLX=NO -DHAVE_X11=NO -DHAVE_GLES1=NO -DHAVE_GLES2=YES \
+        -DHAVE_PYTHON=YES \
+        -DPYMAJOR=$PYMAJOR -DPYMINOR=$PYMINOR -DPython_DIR=${PREFIX} \
         -DPython3_EXECUTABLE:FILEPATH=${SDKROOT}/python3-wasm \
-        -DPython3_INCLUDE_DIR=${SDKROOT}/devices/emsdk/usr/include/python${PYBUILD} \
-        -DPython3_LIBRARY=${SDKROOT}/devices/emsdk/usr/lib \
+        -DPython3_INCLUDE_DIR=${PREFIX}/include/python${PYBUILD} \
+        -DPython3_LIBRARY=${PREFIX}/lib \
         -DPython3_FOUND=TRUE \
         -DPython3_Development_FOUND=TRUE \
         -DPython3_Development.Module_FOUND=TRUE \
