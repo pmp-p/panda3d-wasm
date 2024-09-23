@@ -8,19 +8,6 @@ export CONFIG=${CONFIG:-$SDKROOT/config}
 
 . ${CONFIG}
 
-export CC=emcc
-export CXX=em++
-
-# fix some free threading detection problems.
-if echo $PYBUILD|grep 3.13
-then
-    [ -L $PREFIX/include/python3.13t ]  || ln -s $PREFIX/include/python3.13 $PREFIX/include/python3.13t
-    [ -L $PREFIX/lib/libpython3.13t.a ] || ln -s $PREFIX/lib/libpython3.13.a $PREFIX/lib/libpython3.13t.a
-    export PYLINK="/opt/python-wasm-sdk/prebuilt/emsdk/libHacl_Hash_SHA23.13.a /opt/python-wasm-sdk/prebuilt/emsdk/libexpat3.13.a /opt/python-wasm-sdk/prebuilt/emsdk/libmpdec3.13.a -lffi"
-fi
-
-
-
 echo "
 
     * building Panda3D for ${CIVER}, PYBUILD=$PYBUILD => CPython${PYMAJOR}.${PYMINOR}
@@ -33,48 +20,107 @@ echo "
 
 outputdir=$(pwd)/build/panda3d
 
-pushd $(pwd)/external
 
+
+
+
+# fix some free threading detection problems.
+if echo $PYBUILD|grep 3.13
+then
+    [ -L $PREFIX/include/python3.13t ]  || ln -s $PREFIX/include/python3.13 $PREFIX/include/python3.13t
+    [ -L $PREFIX/lib/libpython3.13t.a ] || ln -s $PREFIX/lib/libpython3.13.a $PREFIX/lib/libpython3.13t.a
+    export IGATE_WHEEL=$(realpath packages.d/panda3d/panda3d_interrogate-0.2.0-cp313-cp313t-linux_x86_64.whl)
+fi
+
+export PYLINK="\
+ ${SDKROOT}/prebuilt/emsdk/libHacl_Hash_SHA2${PYBUILD}.a \
+ ${SDKROOT}/prebuilt/emsdk/libexpat${PYBUILD}.a \
+ ${SDKROOT}/prebuilt/emsdk/libmpdec${PYBUILD}.a \
+ ${SDKROOT}/devices/emsdk/usr/lib/libssl.a \
+ ${SDKROOT}/devices/emsdk/usr/lib/libcrypto.a \
+ -lffi"
+
+
+pushd $(pwd)/external
 
 if true
 then
 
-if [ -d panda3d ]
-then
-    pushd $(pwd)/panda3d
-    git restore .
-    git pull
+    if [ -d panda3d ]
+    then
+        pushd $(pwd)/panda3d
+        git restore .
+        git pull
 
-else
-    git clone --no-tags --depth 1 --single-branch --branch webgl-port https://github.com/pmp-p/panda3d panda3d
-    pushd $(pwd)/panda3d
-    git submodule update --init --recursive
-fi
+    else
+        git clone --no-tags --depth 1 --single-branch --branch webgl-port https://github.com/pmp-p/panda3d panda3d
+        pushd $(pwd)/panda3d
+        git submodule update --init --recursive
+    fi
 
 
-[ -f panda3d.static.c ] && rm panda3d.static.c
+    [ -f panda3d.static.c ] && rm panda3d.static.c
 
-if [ -f /data/git/pygbag/wip/makepanda.py ]
-then
-    cp -vf /data/git/pygbag/wip/makepanda*.py makepanda/
-    patch -p1 < /data/git/pygbag/wip/panda.diff
-    patch -p1 < /data/git/pygbag/wip/panda1.diff
-else
-    wget -Omakepanda/makepandacore.pgw.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepandacore.py
-    wget -Omakepanda/makepanda.pgw.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepanda.py
-    wget -Omakepanda/makepandacore.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepandacore.py
-    wget -Omakepanda/makepanda.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepanda.py
-fi
+    if [ -d ${WORKSPACE}/wip/panda3d ]
+    then
+        cp -vf /data/git/pygbag/wip/panda3d/makepanda*.py makepanda/
+        for patch in /data/git/pygbag/wip/panda3d/*.diff
+        do
+            patch -p1 < $patch
+        done
+    else
+        wget -Omakepanda/makepandacore.upstream.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepandacore.py
+        wget -Omakepanda/makepanda.upstream.py https://raw.githubusercontent.com/panda3d/panda3d/master/makepanda/makepanda.py
+        wget -Omakepanda/makepandacore.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepandacore.py
+        wget -Omakepanda/makepanda.py https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/makepanda/makepanda.py
+    fi
 
-wget -Opanda3d.static.c https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/panda3d.static.c
+    wget -Opanda3d.static.c https://raw.githubusercontent.com/pmp-p/panda3d/python-wasm-sdk/panda3d.static.c
 
-# merged
-#wget -O- https://patch-diff.githubusercontent.com/raw/panda3d/panda3d/pull/1608.diff | patch -p1
 
-#wget -O- https://patch-diff.githubusercontent.com/raw/pmp-p/panda3d/pull/4.diff | patch -p1
-#wget -O-  https://patch-diff.githubusercontent.com/raw/pmp-p/panda3d/pull/9.diff | patch -p1
 
-patch -p1 <<END
+    #wget -O- https://patch-diff.githubusercontent.com/raw/panda3d/panda3d/pull/1684.diff | patch -p1
+    #fixed by https://github.com/panda3d/panda3d/commit/c05a63f4ae9bd7d8d7539e79667051e6684a2267 which is :
+    patch -p1 <<END
+diff --git a/panda/src/pipeline/cycleDataLockedStageReader.I b/panda/src/pipeline/cycleDataLockedStageReader.I
+index a471aac0b7..2e2477fb9a 100644
+--- a/panda/src/pipeline/cycleDataLockedStageReader.I
++++ b/panda/src/pipeline/cycleDataLockedStageReader.I
+@@ -180,7 +180,7 @@ CycleDataLockedStageReader(const CycleDataLockedStageReader<CycleDataType> &copy
+ template<class CycleDataType>
+ INLINE CycleDataLockedStageReader<CycleDataType>::
+ CycleDataLockedStageReader(CycleDataLockedStageReader<CycleDataType> &&from) noexcept :
+-  _pointer(from._cycler)
++  _pointer(from._pointer)
+ {
+   from._pointer = nullptr;
+ }
+END
+
+
+    # merged
+    #wget -O- https://patch-diff.githubusercontent.com/raw/panda3d/panda3d/pull/1608.diff | patch -p1
+
+    #wget -O- https://patch-diff.githubusercontent.com/raw/pmp-p/panda3d/pull/4.diff | patch -p1
+    #wget -O-  https://patch-diff.githubusercontent.com/raw/pmp-p/panda3d/pull/9.diff | patch -p1
+
+    patch -p1 <<END
+diff --git a/panda/src/pgraph/nodePath_ext.cxx b/panda/src/pgraph/nodePath_ext.cxx
+index 7995717979..e05877be53 100644
+--- a/panda/src/pgraph/nodePath_ext.cxx
++++ b/panda/src/pgraph/nodePath_ext.cxx
+@@ -279,7 +279,7 @@ set_shader_inputs(PyObject *args, PyObject *kwargs) {
+   PyObject *key, *value;
+   Py_ssize_t pos = 0;
+
+-  Py_BEGIN_CRITICAL_SECTION(dict);
++  Py_BEGIN_CRITICAL_SECTION(kwargs);
+   while (PyDict_Next(kwargs, &pos, &key, &value)) {
+     char *buffer;
+     Py_ssize_t length;
+END
+
+    patch -p1 <<END
 diff --git a/panda/src/pgraph/cullBinManager.cxx b/panda/src/pgraph/cullBinManager.cxx
 index cfacd85..92052aa 100644
 --- a/panda/src/pgraph/cullBinManager.cxx
@@ -107,7 +153,7 @@ END
 #         Warn("Unsupported platform:", target)
 #END
 
-patch -p1 <<END
+    patch -p1 <<END
 diff --git a/panda/src/express/virtualFileSystem.cxx b/panda/src/express/virtualFileSystem.cxx
 index 37c220f..961245e 100644
 --- a/panda/src/express/virtualFileSystem.cxx
@@ -133,7 +179,7 @@ index 37c220f..961245e 100644
 END
 
 
-patch -p1 <<END
+    patch -p1 <<END
 diff --git a/direct/src/showbase/Loader.py b/direct/src/showbase/Loader.py
 index 92ed0cf..a3c9348 100644
 --- a/direct/src/showbase/Loader.py
@@ -166,9 +212,8 @@ index 92ed0cf..a3c9348 100644
 END
 
 
-
-export P3D_SRC_DIR=$(pwd)
-popd
+    export P3D_SRC_DIR=$(pwd)
+    popd
 
 else
     pushd $(pwd)/panda3d
@@ -218,21 +263,22 @@ then
 else
     pushd $P3D_SRC_DIR
 
-    mkdir -p $outputdir/bin
+#    mkdir -p $outputdir/bin
 
-    echo '#!/bin/bash
-    node $0.js $@
-    ' > $outputdir/bin/interrogate
+#    echo '#!/bin/bash
+#    node $0.js $@
+#    ' > $outputdir/bin/interrogate
 
-    ln $outputdir/bin/interrogate $outputdir/bin/interrogate_module
-    chmod +x $outputdir/bin/*
+#    ln $outputdir/bin/interrogate $outputdir/bin/interrogate_module
+#    chmod +x $outputdir/bin/*
 
     #export PATH=$outputdir/bin:$PATH
 
 # assimp : NOT OK
 MAKEPANDA_THIRDPARTY=$SDKROOT/devices/emsdk/usr /opt/python-wasm-sdk/python3-wasm makepanda/makepanda.py \
-     --static --nothing --use-direct \
-     --use-egg --optimize 3 \
+    --static --nothing \
+    --use-egg --use-direct --use-pandafx \
+    --optimize 3 \
     --no-x11 --no-egl --no-gles --use-gles2 \
     --use-vorbis --use-freetype --use-harfbuzz \
     --use-zlib --use-png --use-jpeg \
@@ -262,7 +308,6 @@ MAKEPANDA_THIRDPARTY=$SDKROOT/devices/emsdk/usr /opt/python-wasm-sdk/python3-was
  | grep --line-buffered -v ^Adding | grep --line-buffered -v ^Ignoring
 
     rm ${SDKROOT}/prebuilt/emsdk/libpanda3d${PYBUILD}.a $outputdir/lib/libstatic.a $outputdir/lib/libstatic.o
-    #read
 fi
 
 # TODO :
@@ -284,15 +329,13 @@ then
         emcc -r -Wl,--whole-archive -o $outputdir/libpanda3d${PYBUILD}.o $LINKALL
         emar cr ${SDKROOT}/prebuilt/emsdk/libpanda3d${PYBUILD}.a $outputdir/libpanda3d${PYBUILD}.o
 
-        emcc -Os -g0 -shared \
+        emcc -O0 -g0 -shared \
          -o $outputdir/lib/static.cpython-${TAG}-wasm32-emscripten.so \
          ${SDKROOT}/prebuilt/emsdk/libpanda3d${PYBUILD}.a \
          $EMPIC/libfreetype.a $EMPIC/libharfbuzz.a $EMPIC/libvorbis.a $EMPIC/libogg.a \
              /opt/python-wasm-sdk/devices/emsdk/usr/lib/libBullet*.a \
             /opt/python-wasm-sdk/devices/emsdk/usr/lib/libode.a \
             -lpng
-
-#         $(find $outputdir/lib|grep \\.a$)
 
         TARGET_FOLDER=testing/panda3d-1.11.0-cp${TAG}-cp${TAG}-wasm32_${WASM_FLAVOUR}_emscripten
         mkdir -p ${TARGET_FOLDER}
@@ -312,7 +355,8 @@ then
 
         if [ -d /data/git/archives/repo/pkg ]
         then
-            whl=/data/git/archives/repo/pkg/$(basename $(pwd)).whl
+            PYGBAG_VERSION=$(PYTHONPATH=${WORKSPACE}/src $SYS_PYTHON -c "print(__import__('pygbag').VERSION)")
+            whl=/data/git/archives/repo/cp${PYMAJOR}${PYMINOR}-${PYGBAG_VERSION}/$(basename $(pwd)).whl
             [ -f $whl ] && rm $whl
             [ -f main.py ] && rm main.py $(find -type f|grep .-pygbag\\..)
             zip $whl -r .
